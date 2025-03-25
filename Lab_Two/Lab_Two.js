@@ -1,19 +1,18 @@
 "use strict";
 
-let blindSignatures = require('blind-signatures');
+let blindSignatures = require("blind-signatures");
 
-let SpyAgency = require('./spyAgency.js').SpyAgency;
+let SpyAgency = require("./spyAgency.js").SpyAgency;
 
 function makeDocument(coverName) {
   return The bearer of this signed document, ${coverName}, has full diplomatic immunity.;
 }
 
 function blind(msg, n, e) {
-  
   return blindSignatures.blind({
     message: msg,
-    N: agency.n,
-    E: agency.e,
+    N: n,
+    E: e,
   });
 }
 
@@ -25,36 +24,59 @@ function unblind(blindingFactor, sig, n) {
   });
 }
 
-
 let agency = new SpyAgency();
 
-let coverNames = ["Agent X", "Agent Y", "Agent Z", "Agent A", "Agent B", "Agent C", "Agent D", "Agent E", "Agent F", "Agent G"];
-let documents = coverNames.map(makeDocument);
-let blindDocs = [];
+// Prepare 10 documents with 10 different cover identities.
+let documents = [];
+let blindedDocs = [];
 let blindingFactors = [];
 
-documents.forEach((doc, index) => {
+for (let i = 0; i < 10; i++) {
+  let coverName = CoverIdentity${i + 1};
+  let doc = makeDocument(coverName);
+  documents.push(doc);
+
   let { blinded, r } = blind(doc, agency.n, agency.e);
-  blindDocs.push(blinded);
+  blindedDocs.push(blinded);
   blindingFactors.push(r);
+}
 
-agency.signDocument(blindDocs, (selected, verifyAndSign) => {
+agency.signDocument(blindedDocs, (selected, verifyAndSign) => {
+  let blindingFactorsForVerification = [];
+  let originalDocsForVerification = [];
 
-let blindedFactorsForVerification = blindingFactors.map((bf, i) => (i === selected ? undefined : bf));
-  
-  let originalDocsForVerification = documents.map((doc, i) => (i === selected ? undefined : doc));
-  
-  let blindedSignature = verifyAndSign(blindedFactorsForVerification, originalDocsForVerification);
-  
-  let signature = unblind(blindingFactors[selected], blindedSignature, agency.n);\
-  
+  // Populate arrays for verification, skipping the selected document
+  for (let i = 0; i < 10; i++) {
+    if (i === selected) {
+      blindingFactorsForVerification.push(undefined);
+      originalDocsForVerification.push(undefined);
+    } else {
+      blindingFactorsForVerification.push(blindingFactors[i]);
+      originalDocsForVerification.push(documents[i]);
+    }
+  }
+
+  // Call verifyAndSign function
+  let blindedSignature = verifyAndSign(
+    blindingFactorsForVerification,
+    originalDocsForVerification
+  );
+
+  // Unblind the signature for the selected document
+  let unblindedSignature = unblind(
+    blindingFactors[selected],
+    blindedSignature,
+    agency.n
+  );
+
+  // Validate the signature
   let isValid = blindSignatures.verify({
-    
-    unblinded: signature,
+    unblinded: unblindedSignature,
+    message: documents[selected],
     N: agency.n,
     E: agency.e,
-    message: documents[selected],
   });
 
-  console.log(Signature valid for selected document: ${isValid});
+  console.log(Document ${selected} signature is valid: ${isValid});
+  console.log(Signature: ${unblindedSignature});
 });
